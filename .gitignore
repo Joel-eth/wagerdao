@@ -1,0 +1,23 @@
+# Environment
+.env
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Coverage
+coverage/
+coverage.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
