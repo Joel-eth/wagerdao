@@ -1,5 +1,9 @@
 # WagerDAO
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.20-363636?logo=solidity)](contracts/)
+[![Network](https://img.shields.io/badge/Network-Base-0052FF?logo=coinbase)](https://base.org)
+
 > Trustless peer-to-peer sports betting on Base.
 > No bookmaker. No custody. No KYC maze. Just code, markets, and USDC.
 
