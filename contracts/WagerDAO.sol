@@ -192,5 +192,186 @@ contract WagerDAO is ReentrancyGuard, Ownable {
         USDC = IERC20(_usdc);
     }
 
-    // Logic functions implemented Day 2-4
+    // ===============================================
+    // MARKET CREATION
+    // ===============================================
+
+    function createMarket(
+        string calldata homeTeam,
+        string calldata awayTeam,
+        string calldata competition,
+        uint256 kickoff
+    ) external nonReentrant returns (bytes32 marketId) {
+        require(kickoff > block.timestamp + 1 hours, "Kickoff too soon");
+        require(bytes(homeTeam).length > 0, "Home team required");
+        require(bytes(awayTeam).length > 0, "Away team required");
+
+        if (msg.sender != owner()) {
+            USDC.safeTransferFrom(
+                msg.sender,
+                FEE_WALLET,
+                MARKET_CREATION_FEE
+            );
+        }
+
+        marketId = keccak256(abi.encodePacked(
+            homeTeam,
+            awayTeam,
+            kickoff,
+            block.timestamp
+        ));
+
+        require(markets[marketId].kickoff == 0, "Market already exists");
+
+        markets[marketId] = Market({
+            id: marketId,
+            homeTeam: homeTeam,
+            awayTeam: awayTeam,
+            competition: competition,
+            kickoff: kickoff,
+            totalHomeBets: 0,
+            totalAwayBets: 0,
+            totalDrawBets: 0,
+            status: MarketStatus.OPEN,
+            result: Outcome.NONE,
+            creator: msg.sender,
+            createdAt: block.timestamp
+        });
+
+        allMarketIds.push(marketId);
+
+        emit MarketCreated(
+            marketId,
+            homeTeam,
+            awayTeam,
+            competition,
+            kickoff,
+            msg.sender
+        );
+    }
+
+    // ===============================================
+    // PLACE BET
+    // ===============================================
+
+    function placeBet(
+        bytes32 marketId,
+        Outcome prediction,
+        uint256 amount
+    ) external nonReentrant returns (bytes32 betId) {
+        Market storage market = markets[marketId];
+
+        if (market.kickoff == 0) revert MarketNotFound(marketId);
+        if (market.status != MarketStatus.OPEN) {
+            revert MarketNotOpen(marketId, market.status);
+        }
+        if (block.timestamp >= market.kickoff) {
+            revert KickoffPassed(marketId);
+        }
+        if (amount < MIN_BET) revert BetTooSmall(amount, MIN_BET);
+        if (prediction == Outcome.NONE) revert InvalidOutcome();
+
+        USDC.safeTransferFrom(msg.sender, address(this), amount);
+
+        betId = keccak256(abi.encodePacked(
+            msg.sender,
+            marketId,
+            prediction,
+            amount,
+            block.timestamp,
+            totalBetsPlaced
+        ));
+
+        bets[betId] = Bet({
+            id: betId,
+            bettor: msg.sender,
+            marketId: marketId,
+            prediction: prediction,
+            amount: amount,
+            claimed: false,
+            placedAt: block.timestamp
+        });
+
+        if (prediction == Outcome.HOME) {
+            market.totalHomeBets += amount;
+        } else if (prediction == Outcome.AWAY) {
+            market.totalAwayBets += amount;
+        } else {
+            market.totalDrawBets += amount;
+        }
+
+        userBets[msg.sender].push(betId);
+
+        totalVolume += amount;
+        totalBetsPlaced++;
+
+        emit BetPlaced(betId, msg.sender, marketId, prediction, amount);
+    }
+
+    // ===============================================
+    // LOCK MARKET
+    // ===============================================
+
+    function lockMarket(bytes32 marketId) external {
+        Market storage market = markets[marketId];
+
+        if (market.kickoff == 0) revert MarketNotFound(marketId);
+        if (market.status != MarketStatus.OPEN) {
+            revert MarketNotOpen(marketId, market.status);
+        }
+        if (block.timestamp < market.kickoff) {
+            revert KickoffNotPassed(marketId);
+        }
+
+        market.status = MarketStatus.LOCKED;
+
+        emit MarketLocked(marketId);
+    }
+
+    // ===============================================
+    // VIEW FUNCTIONS
+    // ===============================================
+
+    function getMarket(bytes32 marketId)
+        external
+        view
+        returns (Market memory)
+    {
+        return markets[marketId];
+    }
+
+    function getTotalPool(bytes32 marketId)
+        external
+        view
+        returns (uint256)
+    {
+        Market storage m = markets[marketId];
+        return m.totalHomeBets + m.totalAwayBets + m.totalDrawBets;
+    }
+
+    function getAllMarkets()
+        external
+        view
+        returns (bytes32[] memory)
+    {
+        return allMarketIds;
+    }
+
+    function getMarkets(uint256 offset, uint256 limit)
+        external
+        view
+        returns (bytes32[] memory)
+    {
+        uint256 total = allMarketIds.length;
+        if (offset >= total) return new bytes32[](0);
+
+        uint256 end = offset + limit;
+        if (end > total) end = total;
+
+        bytes32[] memory result = new bytes32[](end - offset);
+        for (uint256 i = offset; i < end; i++) {
+            result[i - offset] = allMarketIds[i];
+        }
+        return result;
+    }
 }
